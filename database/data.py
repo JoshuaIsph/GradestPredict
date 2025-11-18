@@ -9,30 +9,8 @@ RING_COLOR_MAP = {
     "15": "orange"
 }
 
-def get_climbs(angle):
-    """Fetch top 5 climbs for a given angle sorted by ascensionist count."""
-    if not os.path.exists(DB_PATH):
-        print(f"Database not found at: {DB_PATH}")
-        return []
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        query = """
-            SELECT c.name, cs.ascensionist_count, c.frames
-            FROM climbs c
-            JOIN climb_stats cs ON c.uuid = cs.climb_uuid
-            WHERE cs.angle = ?
-            ORDER BY cs.ascensionist_count DESC
-            LIMIT 1
-        """
-        cursor.execute(query, (angle,))
-        climbs = cursor.fetchall()
-    except sqlite3.Error as e:
-        print("Database error:", e)
-        climbs = []
-    finally:
-        conn.close()
-    return climbs
+
+# --- Utility functions (get_coordinates_for_hold, parse_frames) remain the same ---
 
 def get_coordinates_for_hold(hold_id):
     """Fetch (x, y) coordinates for a hold by its ID."""
@@ -80,11 +58,41 @@ def parse_frames(frames):
     return coordinates
 
 
-def get_climbs_with_coordinates():
+# 🛠️ MODIFIED FUNCTION: Accepts angle and limit
+def get_climbs(angle, limit):
+    """Fetch top climbs for a given angle sorted by ascensionist count."""
+    if not os.path.exists(DB_PATH):
+        print(f"Database not found at: {DB_PATH}")
+        return []
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        query = f"""
+            SELECT c.name, cs.ascensionist_count, c.frames
+            FROM climbs c
+            JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+            WHERE cs.angle = ?
+            ORDER BY cs.ascensionist_count DESC
+            LIMIT {limit} 
+        """
+        cursor.execute(query, (angle,))
+        climbs = cursor.fetchall()
+    except sqlite3.Error as e:
+        print("Database error:", e)
+        climbs = []
+    finally:
+        conn.close()
+    return climbs
+
+
+# 🛠️ MODIFIED FUNCTION: Accepts angle and limit
+def get_climbs_with_coordinates(angle=40, num_climbs=5):
     """Fetch climbs and preprocess frames into coordinates."""
-    angle = 40
-    climbs = get_climbs(angle)
+
+    # Pass both arguments to the fetching function
+    climbs = get_climbs(angle, num_climbs)
     result = {}
+
     for climb in climbs:
         name, ascensionist_count, frames = climb
         coordinates = parse_frames(frames)
@@ -95,3 +103,7 @@ def get_climbs_with_coordinates():
             "coordinates": coordinates
         }
     return result
+
+# Example usage:
+# climbs_data = get_climbs_with_coordinates(angle=30, num_climbs=10)
+# print(f"Fetched data for {len(climbs_data)} climbs.")
