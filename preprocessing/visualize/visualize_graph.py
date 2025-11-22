@@ -20,6 +20,7 @@ def visualize_climb_graph(G, paths=None):
     # Node positions (x, y)
     pos = {node: data['pos'] for node, data in G.nodes(data=True)}
 
+
     # Node colors
     colors = [data.get('color', 'lightgray') for _, data in G.nodes(data=True)]
 
@@ -35,8 +36,23 @@ def visualize_climb_graph(G, paths=None):
     )
 
     # Draw edge weights
-    edge_labels = {(u, v): f"{d.get('weight', 0):.2f}" for u, v, d in G.edges(data=True)}
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
+    # Draw edge weights + latest reward
+    edge_labels = {}
+    for u, v, d in G.edges(data=True):
+        weight = d.get('weight', 0)
+        reward = d.get('latest_reward', None)
+
+        if reward is not None:
+            edge_labels[(u, v)] = f"{weight:.2f} | R={reward:.2f}"
+        else:
+            edge_labels[(u, v)] = f"{weight:.2f}"
+
+    nx.draw_networkx_edge_labels(
+        G,
+        pos,
+        edge_labels=edge_labels,
+        font_color='red'
+    )
 
     #  Draw hold_type labels slightly offset from each node
 
@@ -73,3 +89,55 @@ def visualize_climb_graph(G, paths=None):
     plt.axis('on')
     plt.grid(True, linestyle=':', alpha=0.5)
     plt.show()
+
+import matplotlib.pyplot as plt
+import networkx as nx
+
+
+def visualize_path(G, transitions, attempt_index=0, pos_scale=1.5):
+    if not transitions:
+        print("No transitions to visualize.")
+        return
+
+    # --- Get original positions and scale ---
+    pos_original = nx.get_node_attributes(G, 'pos')
+    pos_init = {node: (x * pos_scale, y * pos_scale) for node, (x, y) in pos_original.items()}
+
+    # Use spring layout to spread nodes apart, starting from scaled positions
+    pos = nx.spring_layout(G, pos=pos_init, k=50, iterations=200)
+    # Remove 'fixed' parameter so nodes can move
+    # k=50 makes nodes more spread out; increase for more spacing
+    # iterations=200 for layout convergence
+
+    # Draw nodes
+    nx.draw(G, pos, with_labels=True, node_size=300, node_color="lightblue")
+    nx.draw_networkx_edges(G, pos, alpha=0.3)
+
+    # Draw the transitions
+    for step, (state, action, reward, next_state) in enumerate(transitions):
+        limb, target_hold = action
+        limbs = ['LH', 'RH', 'LF', 'RF']
+        moved_index = limbs.index(limb)
+        source_hold = state[moved_index]
+
+        # Arrow from source to target
+        plt.annotate(
+            "",
+            xy=pos[target_hold],
+            xytext=pos[source_hold],
+            arrowprops=dict(arrowstyle="->", color='red', lw=2)
+        )
+
+        # Label at midpoint with step number, limb, reward
+        mid_x = (pos[source_hold][0] + pos[target_hold][0]) / 2
+        mid_y = (pos[source_hold][1] + pos[target_hold][1]) / 2
+        plt.text(
+            mid_x, mid_y, f"{step+1}\n{limb}\nR={reward:.1f}",
+            color="darkgreen", fontsize=10,
+            ha='center', va='center', fontweight='bold'
+        )
+
+    plt.title(f"Climb Attempt {attempt_index}")
+    plt.axis('off')
+    plt.show()
+

@@ -16,18 +16,20 @@ if __name__ == "__main__":
     if os.path.exists(filename):
         os.remove(filename)
         print(f"🧹 Removed old dataset file: {filename}. Starting fresh.")
-    climbs = get_climbs_with_coordinates(40,100)
+    climbs = get_climbs_with_coordinates(40,1)
     all_dataset = []
 
     for name, info in climbs.items():
         # Build the climb graph with reachability
         G = build_climb_graph_with_reachability(info)
         #visualize graph
-        #visualize_climb_graph(G)
         # determine start and target
         start_state, target_hold = determine_start_and_target(info)
+
+        num_nodes = G.number_of_nodes()
         #generate biased transitions
-        transitions = generate_biased_transitions(G, start_state, target_hold, num_episodes=5)
+        transitions,G = generate_biased_transitions(G, start_state, target_hold, num_episodes=2,bias_factor=2.0, max_steps=10)
+        visualize_climb_graph(G)
         #convert to dicts and save
         dict = convert_transitions_to_dicts(transitions,G)
         # save to csv

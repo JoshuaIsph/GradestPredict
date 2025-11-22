@@ -5,6 +5,10 @@ import random
 # These are the "rules" of your climbing environment.
 
 import numpy as np  # Still useful for reward/heuristic later
+
+from preprocessing.visualize.visualize_graph import visualize_climb_graph, visualize_path
+
+
 def determine_start_and_target(info):
     """
     Determine the start state (LH, RH, LF, RF) and target hold for a given climb.
@@ -57,70 +61,86 @@ def determine_start_and_target(info):
 
     return start_state, target_hold
 
-def get_valid_moves(current_state, hold_graph, constraints=None):
+
+import networkx as nx
+
+# --- CONFIGURATION ---
+MAX_FOOT_ABOVE_HAND = 15
+MAX_HAND_BELOW_FOOT = 15
+
+def get_y_pos(hold_graph, hold_id):
+    """Extract Y-coordinate of a hold from the graph."""
+    try:
+        return hold_graph.nodes[hold_id]['pos'][1]
+    except KeyError:
+        return 0
+
+def check_occupancy(target_hold_id, other_limb_holds):
+    """Return True if target hold is free to move to."""
+    return target_hold_id not in other_limb_holds
+
+def check_hold_type(limb_name, target_type):
+    """Return True if limb can legally move to this hold type."""
+    is_hand = 'H' in limb_name
+    if is_hand and target_type not in ['hand', 'any']:
+        return False
+    if not is_hand and target_type not in ['foot', 'any']:
+        return False
+    return True
+
+def check_anatomy(limb_name, target_y, highest_hand_y, lowest_foot_y):
+    """Return True if anatomical constraints are satisfied."""
+    is_hand = 'H' in limb_name
+    if is_hand and target_y < (lowest_foot_y - MAX_HAND_BELOW_FOOT):
+        return False
+    if not is_hand and target_y > (highest_hand_y + MAX_FOOT_ABOVE_HAND):
+        return False
+    return True
+
+def construct_next_state(current_state, limb_name, index, target_hold_id):
+    """Return the next state tuple after moving one limb."""
+    next_state = list(current_state)
+    next_state[index] = target_hold_id
+    return tuple(next_state)
+
+def get_valid_moves(current_state, hold_graph):
     """
     Finds all valid (Action, Next_State) pairs from the current_state.
-
-    This version assumes "reach" is pre-calculated in the hold_graph edges.
-
-    'hold_graph' nodes MUST have data:
-    - hold_graph.nodes['H1']['pos'] = (x, y)
-    - hold_graph.nodes['H1']['type'] = 'hand' | 'foot' | 'any'
     """
-
     possible_moves = []
-    limbs = {'LH': 0, 'RH': 1, 'LF': 2, 'RF': 3}  # Maps limb name to index
+    limbs = {'LH': 0, 'RH': 1, 'LF': 2, 'RF': 3}
 
-    # --- Start Main Logic ---
+    # Precompute hand/foot boundaries
+    lh_y, rh_y = get_y_pos(hold_graph, current_state[0]), get_y_pos(hold_graph, current_state[1])
+    highest_hand_y = max(lh_y, rh_y)
+    lf_y, rf_y = get_y_pos(hold_graph, current_state[2]), get_y_pos(hold_graph, current_state[3])
+    lowest_foot_y = min(lf_y, rf_y)
 
-    # Iterate through each limb you could *move*
     for limb_name, index in limbs.items():
+        current_hold = current_state[index]
+        other_limb_holds = [h for i, h in enumerate(current_state) if i != index]
 
-        current_hold_id = current_state[index]
+        for target_hold_id in hold_graph.neighbors(current_hold):
+            if not check_occupancy(target_hold_id, other_limb_holds):
+                continue
 
-        # Get the holds occupied by the *other* three limbs
-        other_limb_holds = list(current_state)
-        other_limb_holds.pop(index)  # Remove the current limb's hold
-
-        # --- 1. Loop Through "Reachable" Holds (from Graph) ---
-        # This is the key change! We only check neighbors.
-        for target_hold_id in hold_graph.neighbors(current_hold_id):
-
-            # --- 2. Run Constraint Checks ---
-
-            # CHECK A: Is the target hold occupied by *another* limb?
-            if target_hold_id in other_limb_holds:
-                continue  # Target is occupied, invalid move
-
-            # CHECK B: Is this the right *type* of hold?
             try:
                 target_type = hold_graph.nodes[target_hold_id]['hold_type']
             except KeyError:
-                print(f"Error: Hold '{target_hold_id}' is missing a 'hold_"
-                      f"hold_type' attribute.")
+                print(f"Warning: Hold '{target_hold_id}' missing 'hold_type'")
                 continue
 
-            is_hand_move = 'H' in limb_name
+            target_y = get_y_pos(hold_graph, target_hold_id)
 
-            if is_hand_move and target_type  in ['hand', 'any']:
-                continue  # Trying to move a hand to a foot-only hold
-            if not is_hand_move and target_type not in ['foot', 'any']:
-                continue  # Trying to move a foot to a hand-only hold
+            if not (check_hold_type(limb_name, target_type) and
+                    check_anatomy(limb_name, target_y, highest_hand_y, lowest_foot_y)):
+                continue
 
-            # --- 3. If All Checks Pass, This is a Valid Move ---
-
-            # Construct the action
             action = (limb_name, target_hold_id)
-
-            # Construct the resulting state
-            next_state_list = list(current_state)
-            next_state_list[index] = target_hold_id
-            next_state = tuple(next_state_list)
-
+            next_state = construct_next_state(current_state, limb_name, index, target_hold_id)
             possible_moves.append((action, next_state))
 
     return possible_moves
-
 
 def calculate_distance_bias_reward(current_state, action, hold_graph, bias_factor):
     """
@@ -303,9 +323,9 @@ def calculate_reward(current_state, action, next_state, hold_graph, bias_factor=
     # 📌 REWARD SCALING PARAMETERS (HYPERPARAMETERS)
     # Adjust these values to shape the agent's behavior
     # ----------------------------------------------------------------------
-    VERTICAL_PROGRESS_SCALE = 0.2  # Reward per unit of vertical gain
-    LIMB_CROSSING_PENALTY = -5.0  # Flat penalty for crossing hands or feet
-    HIGH_FEET_PENALTY_SCALE = -0.5  # Penalty per unit of height feet are above hands
+    VERTICAL_PROGRESS_SCALE = 0.5  # Reward per unit of vertical gain
+    LIMB_CROSSING_PENALTY = -2.0  # Flat penalty for crossing hands or feet
+    HIGH_FEET_PENALTY_SCALE = -5.0  # Penalty per unit of height feet are above hands
 
     # ----------------------------------------------------------------------
 
@@ -350,6 +370,7 @@ def calculate_reward(current_state, action, next_state, hold_graph, bias_factor=
                     + R4_high_feet_penalty)
 
     return total_reward
+
 def is_goal_state(state, target_hold):
     """Check if any hand is on the target hold."""
     lh_on_target = (state[0] == target_hold)
@@ -360,66 +381,69 @@ def is_goal_state(state, target_hold):
 # --- Main Function ---
 
 def generate_biased_transitions(hold_graph, start_state, target_hold,
-                                num_episodes=3, bias_factor=2.0, max_steps=10):
+                                num_episodes, bias_factor, max_steps):
     """
     Generate a dataset of (S, A, R, S') transitions using biased sampling.
-
-    Args:
-        hold_graph (networkx.Graph): Your graph 'G' of holds, with positions and edge weights.
-        start_state (tuple): The starting limb configuration, e.g., ('H1', 'H2', 'F1', 'F2').
-        target_hold (str): The ID of the final hold, e.g., 'H_Top'.
-        num_episodes (int): Number of full climbs (paths) to generate.
-        bias_factor (float): How much to prefer "good" moves.
-        max_steps (int): Max moves per climb.
+    Includes visited_state tracking to prevent 'Ping-Pong' loops.
     """
 
-    transition_dataset = []  # This is your new dataset!
+    transition_dataset = []
+    cum_reward = 0
 
-    for _ in range(num_episodes):
+    for i in range(num_episodes):
         current_state = start_state
         steps = 0
 
+        # 1. Initialize History for this episode
+        visited_states = {current_state}
+
+        # Store episode transitions separately for visualization
+        episode_transitions = []
+
         while not is_goal_state(current_state, target_hold) and steps < max_steps:
 
-            # 1. Get all *possible* and *valid* moves from this state
-            #    This is the core logic you must build.
-            #    It uses your hold_graph to check reach and distance.
-            possible_moves = get_valid_moves(current_state, hold_graph, constraints={})
+            possible_moves = get_valid_moves(current_state, hold_graph)
+            new_moves = [m for m in possible_moves if m[1] not in visited_states]
 
-            if not possible_moves:
-                break  # Reached a dead end
+            if not new_moves:
+                print(f"  Episode {i}: Trapped! No unvisited moves available.")
+                break
 
-            # 2. Calculate the "reward" (bias) for each possible move
+            possible_moves = new_moves
             actions = [move[0] for move in possible_moves]
             next_states = [move[1] for move in possible_moves]
 
             raw_rewards = [calculate_reward(current_state, a, s_prime, hold_graph, bias_factor)
                            for a, s_prime in possible_moves]
 
-            # 3. Use your bias logic to pick one
-            total_reward = sum(raw_rewards)
-            if total_reward == 0:
-                # All moves have 0 reward, pick uniformly
-                probs = [1.0 / len(raw_rewards)] * len(raw_rewards)
-            else:
-                probs = [r / total_reward for r in raw_rewards]
+            rewards_array = np.array(raw_rewards)
+            exp_rewards = np.exp(rewards_array - np.max(rewards_array))
+            probs = exp_rewards / exp_rewards.sum()
 
-            # 4. Sample the action and its resulting state
-            chosen_index = random.choices(range(len(possible_moves)), weights=probs, k=1)[0]
-
+            chosen_index = np.random.choice(range(len(possible_moves)), p=probs)
             chosen_action = actions[chosen_index]
             chosen_next_state = next_states[chosen_index]
-            chosen_reward = raw_rewards[chosen_index]  # This is the reward for the *action*
+            chosen_reward = raw_rewards[chosen_index]
 
-            # 5. Save the full tuple
-            # S = current_state
-            # A = chosen_action
-            # R = chosen_reward
-            # S' = chosen_next_state
+            # Debug Info
+            limbs = ['LH', 'RH', 'LF', 'RF']
+            current_holds = {limb: state_id for limb, state_id in zip(limbs, current_state)}
+            print(f"Attempt: {i} | Step: {steps}")
+            print(f"Current holds: {current_holds}")
+            print(f"Chosen action: {chosen_action}, Reward: {chosen_reward:.2f}\n")
+            cum_reward += chosen_reward
+
+            # Save transition
             transition_dataset.append((current_state, chosen_action, chosen_reward, chosen_next_state))
+            episode_transitions.append((current_state, chosen_action, chosen_reward, chosen_next_state))
 
-            # 6. Update for next loop
             current_state = chosen_next_state
+            visited_states.add(current_state)
             steps += 1
 
-    return transition_dataset
+        print(f"Cumulative Reward for episode {i} = {cum_reward}\n")
+
+        # Visualize this episode
+        visualize_path(hold_graph, episode_transitions, attempt_index=0, pos_scale=2.5)
+
+    return transition_dataset, hold_graph
