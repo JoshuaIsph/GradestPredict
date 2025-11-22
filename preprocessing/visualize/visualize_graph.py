@@ -24,7 +24,8 @@ def visualize_climb_graph(G, paths=None):
     # Node colors
     colors = [data.get('color', 'lightgray') for _, data in G.nodes(data=True)]
 
-    plt.figure(figsize=(10, 8))
+
+    plt.figure(figsize=(12, 10), dpi=300)  # high-resolution figure
     nx.draw(
         G,
         pos,
@@ -110,7 +111,7 @@ def visualize_path(G, transitions, attempt_index=0, pos_scale=1.5):
     # iterations=200 for layout convergence
 
     # Draw nodes
-    nx.draw(G, pos, with_labels=True, node_size=300, node_color="lightblue")
+    nx.draw(G, pos, with_labels=True, node_size=100, node_color="lightblue",font_size=8)
     nx.draw_networkx_edges(G, pos, alpha=0.3)
 
     # Draw the transitions
@@ -125,16 +126,16 @@ def visualize_path(G, transitions, attempt_index=0, pos_scale=1.5):
             "",
             xy=pos[target_hold],
             xytext=pos[source_hold],
-            arrowprops=dict(arrowstyle="->", color='red', lw=2)
+            arrowprops=dict(arrowstyle="->", color='red', lw=1)
         )
 
         # Label at midpoint with step number, limb, reward
-        mid_x = (pos[source_hold][0] + pos[target_hold][0]) / 2
-        mid_y = (pos[source_hold][1] + pos[target_hold][1]) / 2
+        mid_x = ((pos[source_hold][0] + pos[target_hold][0]) / 2)
+        mid_y = ((pos[source_hold][1] + pos[target_hold][1]) / 2)
         plt.text(
             mid_x, mid_y, f"{step+1}\n{limb}\nR={reward:.1f}",
-            color="darkgreen", fontsize=10,
-            ha='center', va='center', fontweight='bold'
+            color="darkgreen", fontsize=5,
+            ha='center', va='center'
         )
 
     plt.title(f"Climb Attempt {attempt_index}")

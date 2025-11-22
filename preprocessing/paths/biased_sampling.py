@@ -323,7 +323,7 @@ def calculate_reward(current_state, action, next_state, hold_graph, bias_factor=
     # 📌 REWARD SCALING PARAMETERS (HYPERPARAMETERS)
     # Adjust these values to shape the agent's behavior
     # ----------------------------------------------------------------------
-    VERTICAL_PROGRESS_SCALE = 0.5  # Reward per unit of vertical gain
+    VERTICAL_PROGRESS_SCALE = 1.0  # Reward per unit of vertical gain
     LIMB_CROSSING_PENALTY = -2.0  # Flat penalty for crossing hands or feet
     HIGH_FEET_PENALTY_SCALE = -5.0  # Penalty per unit of height feet are above hands
 
@@ -444,6 +444,6 @@ def generate_biased_transitions(hold_graph, start_state, target_hold,
         print(f"Cumulative Reward for episode {i} = {cum_reward}\n")
 
         # Visualize this episode
-        visualize_path(hold_graph, episode_transitions, attempt_index=0, pos_scale=2.5)
+        visualize_path(hold_graph, episode_transitions, attempt_index=0, pos_scale=5)
 
     return transition_dataset, hold_graph
