@@ -1,7 +1,11 @@
 import sqlite3
 import os
 
-DB_PATH = "../../data/kilter.db"
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # folder of this script
+DB_PATH = os.path.join(BASE_DIR, "../../data/kilter.db")
+
 RING_COLOR_MAP = {
     "12": "green",
     "13": "cyan",
@@ -11,6 +15,32 @@ RING_COLOR_MAP = {
 
 
 # --- Utility functions (get_coordinates_for_hold, parse_frames) remain the same ---
+
+def get_all_hold_ids():
+    """Fetch all unique hold IDs from the database and return as a list."""
+    if not os.path.exists(DB_PATH):
+        print(f"Database not found at: {DB_PATH}")
+        return []
+
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Fetch all unique hold IDs from the placements table
+        cursor.execute("SELECT DISTINCT id FROM placements")
+        rows = cursor.fetchall()
+
+        # Convert to a simple list
+        hold_ids = [row[0] for row in rows]
+
+    except sqlite3.Error as e:
+        print("Database error:", e)
+        hold_ids = []
+    finally:
+        conn.close()
+
+    return hold_ids
+
 
 def get_coordinates_for_hold(hold_id):
     """Fetch (x, y) coordinates for a hold by its ID."""
@@ -54,6 +84,7 @@ def parse_frames(frames):
             })
         else:
             print(f"Missing coordinates for hold ID: {hold_id}")
+            return None  # Return None if any hold is missing coordinates
 
     return coordinates
 
@@ -96,7 +127,9 @@ def get_climbs_with_coordinates(angle=40, num_climbs=5):
     for climb in climbs:
         name, ascensionist_count, frames = climb
         coordinates = parse_frames(frames)
-
+        if coordinates is None:
+            print(f"Skipping climb {name} due to missing coordinates.")
+            continue
         # Use the climb name as the key, and store the rest as a dictionary
         result[name] = {
             "ascensionist_count": ascensionist_count,

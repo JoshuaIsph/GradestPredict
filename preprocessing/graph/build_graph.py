@@ -82,11 +82,8 @@ def build_climb_graph_with_reachability(climb_data, initial_max_distance=30, ski
 
         # 3. Check Connectivity
         if nx.is_connected(G):
-            print(f"✅ Graph is connected at max_distance: {current_max_distance:.2f}.")
             return G
         else:
-            print(f"❌ Graph is NOT connected at max_distance: {current_max_distance:.2f}. Increasing distance...")
-
             # --- Increment the distance ---
             # Increase by 5 units per iteration (you can adjust this step size)
             current_max_distance += 5

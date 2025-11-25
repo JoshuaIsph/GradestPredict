@@ -29,7 +29,7 @@ def determine_start_and_target(info):
 
     # --- Determine hand start (green holds) ---
     if not green_holds:
-        raise ValueError("No green holds found for this climb — cannot determine start hands.")
+        return None, None
 
     green_sorted = sorted(green_holds, key=lambda h: h["y"])
     if len(green_sorted) >= 2:
@@ -118,6 +118,9 @@ def get_valid_moves(current_state, hold_graph):
 
     for limb_name, index in limbs.items():
         current_hold = current_state[index]
+        if current_hold is None:
+            continue  # Skip this limb, no valid moves possible
+
         other_limb_holds = [h for i, h in enumerate(current_state) if i != index]
 
         for target_hold_id in hold_graph.neighbors(current_hold):
@@ -397,12 +400,14 @@ def generate_biased_transitions(hold_graph, start_state, target_hold,
         # 1. Initialize History for this episode
         visited_states = {current_state}
 
+
         # Store episode transitions separately for visualization
         episode_transitions = []
 
         while not is_goal_state(current_state, target_hold) and steps < max_steps:
 
             possible_moves = get_valid_moves(current_state, hold_graph)
+            for p
             new_moves = [m for m in possible_moves if m[1] not in visited_states]
 
             if not new_moves:
@@ -428,10 +433,10 @@ def generate_biased_transitions(hold_graph, start_state, target_hold,
             # Debug Info
             limbs = ['LH', 'RH', 'LF', 'RF']
             current_holds = {limb: state_id for limb, state_id in zip(limbs, current_state)}
-            print(f"Attempt: {i} | Step: {steps}")
-            print(f"Current holds: {current_holds}")
-            print(f"Chosen action: {chosen_action}, Reward: {chosen_reward:.2f}\n")
             cum_reward += chosen_reward
+
+
+
 
             # Save transition
             transition_dataset.append((current_state, chosen_action, chosen_reward, chosen_next_state))
@@ -441,9 +446,9 @@ def generate_biased_transitions(hold_graph, start_state, target_hold,
             visited_states.add(current_state)
             steps += 1
 
-        print(f"Cumulative Reward for episode {i} = {cum_reward}\n")
+
 
         # Visualize this episode
-        visualize_path(hold_graph, episode_transitions, attempt_index=0, pos_scale=5)
+        #visualize_path(hold_graph, episode_transitions, attempt_index=0, pos_scale=5)
 
     return transition_dataset, hold_graph

@@ -4,17 +4,13 @@ import csv
 
 def get_coords(graph, hold_id):
     """Safely retrieves (x, y) from a graph node."""
+
     try:
         node_data = graph.nodes[hold_id]
 
         # Check if stored as a tuple 'pos': (x, y)
         if 'pos' in node_data:
             return node_data['pos']
-
-        # Check if stored as separate keys 'x' and 'y'
-        elif 'x' in node_data and 'y' in node_data:
-            return (node_data['x'], node_data['y'])
-
         # Fallback (shouldn't happen if graph is built right)
         return (0.0, 0.0)
     except KeyError:

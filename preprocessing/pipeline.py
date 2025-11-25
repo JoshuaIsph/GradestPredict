@@ -2,87 +2,54 @@
 import os
 
 from database.data import get_climbs_with_coordinates
-from preprocessing.dataset.graph_to_dataset import paths_to_dataset
+from preprocessing.NeuralNetworks.ActorCriticTraining import main as train_actor_critic
 from preprocessing.dataset.save_dataset import save_dataset_csv, convert_transitions_to_dicts
 from preprocessing.graph.build_graph import build_climb_graph_with_reachability
-
-from preprocessing.graph.edge_wheigts import add_edge_weights
-from preprocessing.paths.biased_sampling import generate_biased_transitions, determine_start_and_target
-from preprocessing.paths.shortes_paths import  astar_climb
-
+from preprocessing.paths.biased_sampling import determine_start_and_target, generate_biased_transitions
 from preprocessing.visualize.visualize_graph import visualize_climb_graph
 
-
 if __name__ == "__main__":
-    filename = "climb_dataset.csv"
+    filename = "../../data/climb_dataset.csv"
     if os.path.exists(filename):
         os.remove(filename)
         print(f"🧹 Removed old dataset file: {filename}. Starting fresh.")
+    climbs = {}
+    angles = [30,35,40,45,50,55,60]
+    all_transitions = []
+    for angle in angles:
+        climbs.update(get_climbs_with_coordinates(angle=angle,num_climbs=100))
 
-    climbs = get_climbs_with_coordinates(40,1)
 
     for name, info in climbs.items():
         print(f"\n🧗 Processing climb: {name}")
 
-        # -------------------------------
-        # 1. Build reachability graph
-        # -------------------------------
         G = build_climb_graph_with_reachability(info)
 
-        # -------------------------------
-        # 2. Pick start + target
-        # -------------------------------
+
+
         start_state, target_hold = determine_start_and_target(info)
-
-        # -------------------------------
-        # 3. Run A* to get optimal path
-        # -------------------------------
-        print("🔍 Running A* planning...")
-        """
-        astar_transitions = astar_plan_states(
-            start_state=start_state,
-            hold_graph=G,
-            target_hold=target_hold,
-            avg_hand_step=6.0,
-            max_expansions=5000,
-            bias_factor=2.0       # if your reward uses it
-        )
-        """
-
-        #print(f" A* returned {len(astar_transitions)} transitions")
-
-        # ---------------------------------
-        # 4. Generate additional biased episodes (optional)
-        # ---------------------------------
+        if start_state is None or target_hold is None:
+            print("⚠️  Skipping this climb due to missing start state or target hold.")
+            continue
 
         biased_transitions, G = generate_biased_transitions(
             G,
             start_state,
             target_hold,
-            num_episodes=2,
+            num_episodes=100,
             bias_factor=2.0,
-            max_steps=10
+            max_steps=20
         )
+        dataset_dicts = convert_transitions_to_dicts(biased_transitions, G)
+        all_transitions += biased_transitions
 
 
-        # ---------------------------------
-        # 5. Combine both sources
-        # ---------------------------------
-        all_transitions = biased_transitions# + astar_transitions
+        #visualize_climb_graph(G)
 
-        # ---------------------------------
-        # 6. Visualize the climb
-        # ---------------------------------
-        visualize_climb_graph(G)
-
-        # ---------------------------------
-        # 7. Convert transitions to dict format
-        # ---------------------------------
-        dataset_dicts = convert_transitions_to_dicts(all_transitions, G)
-
-        # ---------------------------------
-        # 8. Save (append mode!)
-        # ---------------------------------
         save_dataset_csv(dataset_dicts, filename)
 
     print("\n🎉 Finished dataset generation!")
+
+    # --- 9. Train Actor-Critic on the generated dataset ---
+    print("\n🚀 Starting Actor-Critic training...")
+    #train_actor_critic(csv_path=filename)
