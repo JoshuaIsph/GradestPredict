@@ -405,7 +405,7 @@ def generate_biased_transitions(hold_graph, start_state, target_hold,
 
             # 2. Check for Physical Dead End (No holds reachable at all)
             if not possible_moves:
-                print(f"  Episode {i}: Physically Stuck! No holds in reach.")
+                #print(f"  Episode {i}: Physically Stuck! No holds in reach.")
                 # Optional: Record a failure penalty here if training
                 break
 

@@ -15,6 +15,42 @@ RING_COLOR_MAP = {
 
 
 # --- Utility functions (get_coordinates_for_hold, parse_frames) remain the same ---
+def build_hold_lookup():
+    """
+    Build a dictionary mapping all hold IDs to their (x, y) coordinates.
+    Returns:
+        dict: {hold_id: (x, y)}
+    """
+    if not os.path.exists(DB_PATH):
+        print(f"Database not found at: {DB_PATH}")
+        return {}
+
+    hold_lookup = {}
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Join placements -> holes to get coordinates for all holds
+        query = """
+            SELECT p.id, h.x, h.y
+            FROM placements p
+            JOIN holes h ON p.hole_id = h.id
+            WHERE h.product_id = 1
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+        for hold_id, x, y in rows:
+            if x is not None and y is not None:
+                hold_lookup[str(hold_id)] = (x, y)
+
+    except sqlite3.Error as e:
+        print("Database error:", e)
+    finally:
+        conn.close()
+
+    print(f"✅ Built hold lookup table with {len(hold_lookup)} holds.")
+    return hold_lookup
 
 def get_all_hold_ids():
     """Fetch all unique hold IDs from the database and return as a list."""
@@ -89,37 +125,51 @@ def parse_frames(frames):
     return coordinates
 
 # 🛠️ MODIFIED FUNCTION: Accepts angle and limit
-def get_climbs(angle, limit):
-    """Fetch top climbs for a given angle sorted by ascensionist count."""
+def get_climbs(angle, limit=50, offset=0):
+    """
+    Fetch climbs for a specific angle from the database with support for batching.
+
+    Args:
+        angle (int): Angle of the climbs to fetch.
+        limit (int): Maximum number of climbs to fetch in one batch.
+        offset (int): Number of climbs to skip (for pagination).
+
+    Returns:
+        list of tuples: Each tuple is (climb_name, ascensionist_count, frames)
+    """
     if not os.path.exists(DB_PATH):
         print(f"Database not found at: {DB_PATH}")
         return []
+
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        query = f"""
+
+        query = """
             SELECT c.name, cs.ascensionist_count, c.frames
             FROM climbs c
             JOIN climb_stats cs ON c.uuid = cs.climb_uuid
             WHERE cs.angle = ?
             ORDER BY cs.ascensionist_count DESC
-            LIMIT {limit} 
+            LIMIT ? OFFSET ?
         """
-        cursor.execute(query, (angle,))
+        cursor.execute(query, (angle, limit, offset))
         climbs = cursor.fetchall()
+
     except sqlite3.Error as e:
         print("Database error:", e)
         climbs = []
+
     finally:
         conn.close()
+
     return climbs
 
-
 # 🛠️ MODIFIED FUNCTION: Accepts angle and limit
-def get_climbs_with_coordinates(angle=40, num_climbs=5):
+def get_climbs_with_coordinates(angle=40, num_climbs=5, offset=0):
     """Fetch climbs and preprocess frames into coordinates."""
 
-    climbs = get_climbs(angle, num_climbs)
+    climbs = get_climbs(angle, num_climbs, offset=offset)
     result = {}
 
     for climb in climbs:
@@ -133,7 +183,7 @@ def get_climbs_with_coordinates(angle=40, num_climbs=5):
             # Instead of silently skipping, we RERAISE the error.
             # Rerasing will bubble the error up to the generate_dataset function.
             print(f"Propagating error for climb '{name}'...")
-            raise
+            continue
 
             # If parse_frames succeeds, coordinates is never None
         result[name] = {

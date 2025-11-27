@@ -1,6 +1,8 @@
 # preprocessing/dataset/save_dataset.py
 import csv
 
+from database.data import build_hold_lookup
+
 
 def get_coords(graph, hold_id):
     """Safely retrieves (x, y) from a graph node."""
@@ -16,34 +18,55 @@ def get_coords(graph, hold_id):
     except KeyError:
         return (0.0, 0.0)
 # --- 1. Conversion Function ---
-def convert_transitions_to_dicts(transitions, hold_graph):
+
+
+def convert_transitions_to_dicts(transitions):
     """
     Converts transitions into a flat dictionary structure INCLUDING coordinates.
 
     Args:
         transitions: List of (S, A, R, S') tuples.
-        hold_graph: The NetworkX graph to look up (x, y) coordinates.
+    Returns:
+        List[dict]: Flattened dataset with coordinates.
     """
+
+    # Build the lookup table for all hold coordinates
+    hold_lookup = build_hold_lookup()
+
     processed_data = []
     limbs = ['LH', 'RH', 'LF', 'RF']
 
-    for current_state, action, reward, next_state in transitions:
+    for row_data in transitions:
+
+        # Unpack the 4 or 5 elements based on the transition length
+        if len(row_data) == 5:
+            current_state, action, reward, next_state, climb_name = row_data
+        elif len(row_data) == 4:
+            # Fallback for old data or if name wasn't injected (optional, but safer)
+            current_state, action, reward, next_state = row_data
+            climb_name = "UNKNOWN"
+        else:
+            # Skip malformed row
+            continue
+
         row = {}
 
+        # --- 0. Add Climb Name ---
+        row['Climb_Name'] = climb_name  # 💥 NEW FIELD
+
+
         # --- 1. Process Current State (S) ---
-        # current_state is ('ID', 'ID', 'ID', 'ID')
         for i, limb in enumerate(limbs):
             hold_id = current_state[i]
-            x, y = get_coords(hold_graph, hold_id)
+            x, y = hold_lookup.get(str(hold_id), (None, None))
 
             row[f'S_{limb}_ID'] = hold_id
             row[f'S_{limb}_x'] = x
             row[f'S_{limb}_y'] = y
 
         # --- 2. Process Action (A) ---
-        # action is ('LimbName', 'TargetID')
         limb_moved, target_id = action
-        target_x, target_y = get_coords(hold_graph, target_id)
+        target_x, target_y = hold_lookup.get(str(target_id), (None, None))
 
         row['A_Limb'] = limb_moved
         row['A_Target_ID'] = target_id
@@ -56,7 +79,7 @@ def convert_transitions_to_dicts(transitions, hold_graph):
         # --- 4. Process Next State (S') ---
         for i, limb in enumerate(limbs):
             hold_id = next_state[i]
-            x, y = get_coords(hold_graph, hold_id)
+            x, y = hold_lookup.get(str(hold_id), (None, None))
 
             row[f'S_Prime_{limb}_ID'] = hold_id
             row[f'S_Prime_{limb}_x'] = x

@@ -51,7 +51,6 @@ def build_climb_graph_with_reachability(climb_data, initial_max_distance=30, ski
         return nx.Graph()
 
     # --- Start Iterative Loop ---
-    print(f"Starting graph build with initial max_distance: {initial_max_distance}")
 
     while True:
         G = nx.Graph()
