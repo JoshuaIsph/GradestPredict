@@ -383,72 +383,72 @@ def is_goal_state(state, target_hold):
 
 # --- Main Function ---
 
-def generate_biased_transitions(hold_graph, start_state, target_hold,
-                                num_episodes, bias_factor, max_steps):
-    """
-    Generate a dataset of (S, A, R, S') transitions using biased sampling.
-    Includes visited_state tracking to prevent 'Ping-Pong' loops.
-    """
+import numpy as np
 
+
+def generate_biased_transitions(hold_graph, start_state, target_hold,
+                                     num_episodes, bias_factor, max_steps):
     transition_dataset = []
-    cum_reward = 0
+    # Tunable parameter: How much we dislike going back
+    # A value of 5.0 is usually high enough to discourage it, but low enough to allow it if stuck.
+    BACKTRACK_PENALTY = 5.0
 
     for i in range(num_episodes):
         current_state = start_state
         steps = 0
-
-        # 1. Initialize History for this episode
         visited_states = {current_state}
-
-
-        # Store episode transitions separately for visualization
-        episode_transitions = []
 
         while not is_goal_state(current_state, target_hold) and steps < max_steps:
 
+            # 1. Get ALL physically valid moves (regardless of history)
             possible_moves = get_valid_moves(current_state, hold_graph)
-            for p
-            new_moves = [m for m in possible_moves if m[1] not in visited_states]
 
-            if not new_moves:
-                print(f"  Episode {i}: Trapped! No unvisited moves available.")
+            # 2. Check for Physical Dead End (No holds reachable at all)
+            if not possible_moves:
+                print(f"  Episode {i}: Physically Stuck! No holds in reach.")
+                # Optional: Record a failure penalty here if training
                 break
 
-            possible_moves = new_moves
             actions = [move[0] for move in possible_moves]
             next_states = [move[1] for move in possible_moves]
 
-            raw_rewards = [calculate_reward(current_state, a, s_prime, hold_graph, bias_factor)
-                           for a, s_prime in possible_moves]
+            # 3. Calculate Rewards & Apply Soft Penalty
+            adjusted_rewards = []
 
-            rewards_array = np.array(raw_rewards)
+            for action, s_prime in possible_moves:
+                # Calculate the standard heuristic reward (distance, stability, etc.)
+                base_reward = calculate_reward(current_state, action, s_prime, hold_graph, bias_factor)
+
+                # APPLY PENALTY: If we've been here before, subtract points
+                if s_prime in visited_states:
+                    base_reward -= BACKTRACK_PENALTY
+
+                adjusted_rewards.append(base_reward)
+
+            # 4. Convert to Probabilities (Softmax)
+            rewards_array = np.array(adjusted_rewards)
+
+            # Numerical stability shift (subtract max)
             exp_rewards = np.exp(rewards_array - np.max(rewards_array))
             probs = exp_rewards / exp_rewards.sum()
 
+            # 5. Select Move
             chosen_index = np.random.choice(range(len(possible_moves)), p=probs)
             chosen_action = actions[chosen_index]
             chosen_next_state = next_states[chosen_index]
-            chosen_reward = raw_rewards[chosen_index]
 
-            # Debug Info
-            limbs = ['LH', 'RH', 'LF', 'RF']
-            current_holds = {limb: state_id for limb, state_id in zip(limbs, current_state)}
-            cum_reward += chosen_reward
+            # Note: You usually want to record the *un-penalized* reward in the dataset
+            # so the agent learns the real physics, not your artificial history penalty.
+            # But this depends on if you want the agent to learn "don't backtrack" or just "climb well".
+            # Here we record the base_reward (re-calculated or stored):
+            chosen_base_reward = calculate_reward(current_state, chosen_action, chosen_next_state, hold_graph,
+                                                  bias_factor)
 
+            transition_dataset.append((current_state, chosen_action, chosen_base_reward, chosen_next_state))
 
-
-
-            # Save transition
-            transition_dataset.append((current_state, chosen_action, chosen_reward, chosen_next_state))
-            episode_transitions.append((current_state, chosen_action, chosen_reward, chosen_next_state))
-
+            # 6. Update State
             current_state = chosen_next_state
             visited_states.add(current_state)
             steps += 1
 
-
-
-        # Visualize this episode
-        #visualize_path(hold_graph, episode_transitions, attempt_index=0, pos_scale=5)
-
-    return transition_dataset, hold_graph
+    return transition_dataset,hold_graph

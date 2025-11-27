@@ -80,14 +80,13 @@ def parse_frames(frames):
                 "x": x,
                 "y": y,
                 "color_name": color_name,
-                "move": None  # Placeholder for move
+                "move": None
             })
         else:
-            print(f"Missing coordinates for hold ID: {hold_id}")
-            return None  # Return None if any hold is missing coordinates
+            # 💥 CHANGE: Raise a specific ValueError instead of printing and returning None
+            raise ValueError(f"Missing coordinates for hold ID: {hold_id}")
 
     return coordinates
-
 
 # 🛠️ MODIFIED FUNCTION: Accepts angle and limit
 def get_climbs(angle, limit):
@@ -120,23 +119,29 @@ def get_climbs(angle, limit):
 def get_climbs_with_coordinates(angle=40, num_climbs=5):
     """Fetch climbs and preprocess frames into coordinates."""
 
-    # Pass both arguments to the fetching function
     climbs = get_climbs(angle, num_climbs)
     result = {}
 
     for climb in climbs:
         name, ascensionist_count, frames = climb
-        coordinates = parse_frames(frames)
-        if coordinates is None:
-            print(f"Skipping climb {name} due to missing coordinates.")
-            continue
-        # Use the climb name as the key, and store the rest as a dictionary
+
+        # 💥 CHANGE: We now wrap the dangerous call in a try/except block.
+        # This catches the ValueError raised in parse_frames.
+        try:
+            coordinates = parse_frames(frames)
+        except ValueError as e:
+            # Instead of silently skipping, we RERAISE the error.
+            # Rerasing will bubble the error up to the generate_dataset function.
+            print(f"Propagating error for climb '{name}'...")
+            raise
+
+            # If parse_frames succeeds, coordinates is never None
         result[name] = {
             "ascensionist_count": ascensionist_count,
             "coordinates": coordinates
         }
+    print(f"Fetched {len(result)} climbs with coordinates for angle {angle}.")
     return result
-
 # Example usage:
 # climbs_data = get_climbs_with_coordinates(angle=30, num_climbs=10)
 # print(f"Fetched data for {len(climbs_data)} climbs.")
